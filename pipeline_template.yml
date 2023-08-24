@@ -1,0 +1,6 @@
+author: Jannik Seidel
+description: A pipline to idenitfy (and remove) certain sequences from metagenomes
+  using kraken2 and blast. Default organism to identify (and remove) is human. Removal
+  is optional (and will be implemented in the future).
+name: detaxizer
+prefix: jannikseidelQBiC
