@@ -176,14 +176,12 @@
                     "type": "boolean",
                     "description": "Display help text.",
                     "fa_icon": "fas fa-question-circle",
-                    "default": false,
                     "hidden": true
                 },
                 "version": {
                     "type": "boolean",
                     "description": "Display version and exit.",
                     "fa_icon": "fas fa-question-circle",
-                    "default": false,
                     "hidden": true
                 },
                 "publish_dir_mode": {
@@ -207,7 +205,6 @@
                     "type": "boolean",
                     "description": "Send plain-text email instead of HTML.",
                     "fa_icon": "fas fa-remove-format",
-                    "default": false,
                     "hidden": true
                 },
                 "max_multiqc_email_size": {
@@ -222,7 +219,6 @@
                     "type": "boolean",
                     "description": "Do not use coloured log outputs.",
                     "fa_icon": "fas fa-palette",
-                    "default": false,
                     "hidden": true
                 },
                 "hook_url": {
@@ -261,7 +257,6 @@
                     "type": "boolean",
                     "fa_icon": "far fa-eye-slash",
                     "description": "Show all params when using `--help`",
-                    "default": false,
                     "hidden": true,
                     "help_text": "By default, parameters set as _hidden_ in the schema are not shown on the command line when a user runs with `--help`. Specifying this option will tell the pipeline to show all parameters."
                 },
@@ -269,7 +264,6 @@
                     "type": "boolean",
                     "fa_icon": "far fa-check-circle",
                     "description": "Validation of parameters fails when an unrecognised parameter is found.",
-                    "default": false,
                     "hidden": true,
                     "help_text": "By default, when an unrecognised parameter is found, it returns a warinig."
                 },
@@ -277,9 +271,58 @@
                     "type": "boolean",
                     "fa_icon": "far fa-check-circle",
                     "description": "Validation of parameters in lenient more.",
-                    "default": false,
                     "hidden": true,
                     "help_text": "Allows string values that are parseable as numbers or booleans. For further information see [JSONSchema docs](https://github.com/everit-org/json-schema#lenient-mode)."
+                }
+            }
+        },
+        "fastp_options": {
+            "title": "fastp options",
+            "type": "object",
+            "description": "fastp options",
+            "default": "",
+            "properties": {
+                "reads_minlength": {
+                    "type": "integer",
+                    "default": 15,
+                    "description": "fastp option defining the minimum readlength of a read"
+                },
+                "fastp_save_trimmed_fail": {
+                    "type": "boolean",
+                    "description": "fastp option defining if the reads which failed to be trimmed should be saved"
+                },
+                "fastp_qualified_quality": {
+                    "type": "integer",
+                    "default": 15,
+                    "description": "fastp option to define the threshold of quality of an individual base"
+                },
+                "fastp_cut_mean_quality": {
+                    "type": "integer",
+                    "default": 15,
+                    "description": "fastp option to define the mean quality for trimming"
+                },
+                "save_clipped_reads": {
+                    "type": "boolean",
+                    "description": "fastp option to define if the clipped reads should be saved"
+                }
+            }
+        },
+        "new_group_1": {
+            "title": "New Group 1",
+            "type": "object",
+            "description": "",
+            "default": "",
+            "properties": {
+                "kraken2db": {
+                    "type": "string",
+                    "default": "https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz"
+                },
+                "save_output_fastqs": {
+                    "type": "boolean"
+                },
+                "save_reads_assignment": {
+                    "type": "boolean",
+                    "default": true
                 }
             }
         }
@@ -299,6 +342,12 @@
         },
         {
             "$ref": "#/definitions/generic_options"
+        },
+        {
+            "$ref": "#/definitions/fastp_options"
+        },
+        {
+            "$ref": "#/definitions/new_group_1"
         }
     ]
 }

@@ -31,7 +31,7 @@ ch_multiqc_custom_methods_description = params.multiqc_methods_description ? fil
     IMPORT LOCAL MODULES/SUBWORKFLOWS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
-
+include { KRAKEN2PREPARATION } from '../modules/local/kraken2preparation'
 //
 // SUBWORKFLOW: Consisting of a mix of local and nf-core/modules
 //
@@ -68,33 +68,56 @@ workflow DETAXIZER {
     //
     // SUBWORKFLOW: Read in samplesheet, validate and stage input files
     //
-    INPUT_CHECK (
-        file(params.input)
-    )
-    ch_versions = ch_versions.mix(INPUT_CHECK.out.versions)
+    //INPUT_CHECK (
+    //    file(params.input)
+    //)
     // TODO: OPTIONAL, you can use nf-validation plugin to create an input channel from the samplesheet with Channel.fromSamplesheet("input")
     // See the documentation https://nextflow-io.github.io/nf-validation/samplesheets/fromSamplesheet/
     // ! There is currently no tooling to help you write a sample sheet schema
-
-
+    // TODO: Make the map for single ended 
+    ch_input = Channel.fromSamplesheet('input')
+        .map{meta, fastq_1, fastq_2 -> [meta,[fastq_1, fastq_2]]}
+    
     //
     // MODULE: Run FastQC
     //
     FASTQC (
-        INPUT_CHECK.out.reads
+        ch_input
     )
     ch_versions = ch_versions.mix(FASTQC.out.versions.first())
 
-    INPUT_CHECK.reads.view()
     //
     // MODULE: Run fastp
     //
-    //ch_trimmed_reads = FASTP (
-    //    INPUT_CHECK.out.reads,
-    //   [],
-    //    params.fastp_save_trimmed_fail,
-    //    []
-    //)
+
+    FASTP (
+        ch_input,
+        [],
+        params.fastp_save_trimmed_fail,
+        []
+    )
+    ch_versions = ch_versions.mix(FASTP.out.versions)
+
+    //
+    // MODULE: Prepare Kraken2 Database
+    //
+
+    KRAKEN2PREPARATION (
+        params.kraken2db
+    )
+    ch_versions = ch_versions.mix(KRAKEN2PREPARATION.out.versions)
+
+    // 
+    // MODULE: Run Kraken2
+    KRAKEN2_KRAKEN2 (
+        FASTP.out.reads,
+        KRAKEN2PREPARATION.out.db,
+        params.save_output_fastqs,
+        params.save_reads_assignment
+    )
+    ch_versions = ch_versions.mix(KRAKEN2_KRAKEN2.out.versions)
+
+
 
     CUSTOM_DUMPSOFTWAREVERSIONS (
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
