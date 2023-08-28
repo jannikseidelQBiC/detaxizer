@@ -307,8 +307,8 @@
                 }
             }
         },
-        "new_group_1": {
-            "title": "New Group 1",
+        "kraken2": {
+            "title": "kraken2",
             "type": "object",
             "description": "",
             "default": "",
@@ -325,6 +325,20 @@
                     "default": true
                 }
             }
+        },
+        "kraken2taxa": {
+            "title": "kraken2taxa",
+            "type": "object",
+            "description": "",
+            "default": "",
+            "properties": {
+                "tax2filter": {
+                    "type": "string",
+                    "default": "Homo sapiens (taxid 9606)",
+                    "description": "Use the format 'Homo sapiens (taxid 9606)'"
+                }
+            },
+            "required": ["tax2filter"]
         }
     },
     "allOf": [
@@ -347,7 +361,10 @@
             "$ref": "#/definitions/fastp_options"
         },
         {
-            "$ref": "#/definitions/new_group_1"
+            "$ref": "#/definitions/kraken2"
+        },
+        {
+            "$ref": "#/definitions/kraken2taxa"
         }
     ]
 }

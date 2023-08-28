@@ -32,10 +32,11 @@ ch_multiqc_custom_methods_description = params.multiqc_methods_description ? fil
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 include { KRAKEN2PREPARATION } from '../modules/local/kraken2preparation'
+include { ISOLATE_FASTA_FROM_KRAKEN2_TO_BLASTN } from '../modules/local/isolate_fasta_from_kraken2_to_blastn'
+
 //
 // SUBWORKFLOW: Consisting of a mix of local and nf-core/modules
 //
-include { INPUT_CHECK } from '../subworkflows/local/input_check'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -109,6 +110,8 @@ workflow DETAXIZER {
 
     // 
     // MODULE: Run Kraken2
+    //
+
     KRAKEN2_KRAKEN2 (
         FASTP.out.reads,
         KRAKEN2PREPARATION.out.db,
@@ -117,7 +120,15 @@ workflow DETAXIZER {
     )
     ch_versions = ch_versions.mix(KRAKEN2_KRAKEN2.out.versions)
 
+    //    
+    // MODULE: Isolate the hits for a certain taxa 
+    //
 
+    ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN (
+        KRAKEN2_KRAKEN2.out.classified_reads_assignment
+    )
+    ch_versions = ch_versions.mix(ISOLATE_FASTA_FROM_KRAKEN2_TO_BLASTN.out.versions)
+    
 
     CUSTOM_DUMPSOFTWAREVERSIONS (
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
