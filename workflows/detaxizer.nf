@@ -21,6 +21,8 @@ WorkflowDetaxizer.initialise(params, log)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
+nextflow.enable.dsl=2
+
 ch_multiqc_config          = Channel.fromPath("$projectDir/assets/multiqc_config.yml", checkIfExists: true)
 ch_multiqc_custom_config   = params.multiqc_config ? Channel.fromPath( params.multiqc_config, checkIfExists: true ) : Channel.empty()
 ch_multiqc_logo            = params.multiqc_logo   ? Channel.fromPath( params.multiqc_logo, checkIfExists: true ) : Channel.empty()
@@ -32,7 +34,8 @@ ch_multiqc_custom_methods_description = params.multiqc_methods_description ? fil
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 include { KRAKEN2PREPARATION } from '../modules/local/kraken2preparation'
-include { ISOLATE_FASTA_FROM_KRAKEN2_TO_BLASTN } from '../modules/local/isolate_fasta_from_kraken2_to_blastn'
+include { ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN } from '../modules/local/isolate_ids_from_kraken2_to_blastn'
+include { PREPARE_FASTA4BLASTN } from '../modules/local/prepare_fasta4blastn'
 
 //
 // SUBWORKFLOW: Consisting of a mix of local and nf-core/modules
@@ -98,7 +101,7 @@ workflow DETAXIZER {
         []
     )
     ch_versions = ch_versions.mix(FASTP.out.versions)
-
+    FASTP.out.reads.dump()
     //
     // MODULE: Prepare Kraken2 Database
     //
@@ -127,8 +130,23 @@ workflow DETAXIZER {
     ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN (
         KRAKEN2_KRAKEN2.out.classified_reads_assignment
     )
-    ch_versions = ch_versions.mix(ISOLATE_FASTA_FROM_KRAKEN2_TO_BLASTN.out.versions)
+    ch_versions = ch_versions.mix(ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.versions)
     
+    //
+    // MODULE: Extract the hits to fasta format
+    //
+
+    combined_ch = FASTP.out.reads
+            .join(
+                ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.classified, by: 0
+                ) 
+    // TODO: REPLACE awk AND seqtk WITH TOOLS THAT CAN DISPLAY THEIR VERSION NUMBER
+    PREPARE_FASTA4BLASTN(
+        combined_ch
+    )
+    ch_versions = ch_versions.mix(PREPARE_FASTA4BLASTN.out.versions)
+
+
 
     CUSTOM_DUMPSOFTWAREVERSIONS (
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
