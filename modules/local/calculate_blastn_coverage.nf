@@ -1,7 +1,8 @@
 process CALCULATE_BLASTN_COVERAGE {
 
-    container = 'https://depot.galaxyproject.org/singularity/python%3A3.10.4'
-
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://depot.galaxyproject.org/singularity/python:3.10.4' :
+        'biocontainers/python:3.10.4' }"
     input:
         tuple val(meta), path(blast_output)
 
