@@ -49,11 +49,16 @@
             "fa_icon": "fas fa-dna",
             "description": "Reference genome related files and options required for the workflow.",
             "properties": {
+                "saveReference": {
+                    "type": "boolean",
+                    "default": true
+                },
                 "genome": {
                     "type": "string",
                     "description": "Name of iGenomes reference.",
                     "fa_icon": "fas fa-book",
-                    "help_text": "If using a reference genome configured in the pipeline using iGenomes, use this parameter to give the ID for the reference. This is then used to build the full paths for all required reference genome files e.g. `--genome GRCh38`. \n\nSee the [nf-core website docs](https://nf-co.re/usage/reference_genomes) for more details."
+                    "help_text": "If using a reference genome configured in the pipeline using iGenomes, use this parameter to give the ID for the reference. This is then used to build the full paths for all required reference genome files e.g. `--genome GRCh38`. \n\nSee the [nf-core website docs](https://nf-co.re/usage/reference_genomes) for more details.",
+                    "default": "GRCh38"
                 },
                 "fasta": {
                     "type": "string",
@@ -339,6 +344,51 @@
                 }
             },
             "required": ["tax2filter"]
+        },
+        "workflow_parameters": {
+            "title": "Workflow parameters",
+            "type": "object",
+            "description": "",
+            "default": "",
+            "properties": {
+                "single_end": {
+                    "type": "boolean"
+                },
+                "long_read": {
+                    "type": "boolean"
+                },
+                "enable_filter": {
+                    "type": "boolean"
+                },
+                "filter_trimmed": {
+                    "type": "boolean"
+                },
+                "skip_blastn": {
+                    "type": "boolean"
+                },
+                "filter_with_kraken2": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "new_group_2": {
+            "title": "New Group 2",
+            "type": "object",
+            "description": "",
+            "default": "",
+            "properties": {
+                "blastn_db": {
+                    "type": "string"
+                },
+                "blast_coverage": {
+                    "type": "number",
+                    "default": 0.9
+                },
+                "blast_similarity": {
+                    "type": "number",
+                    "default": 0.9
+                }
+            }
         }
     },
     "allOf": [
@@ -365,6 +415,18 @@
         },
         {
             "$ref": "#/definitions/kraken2taxa"
+        },
+        {
+            "$ref": "#/definitions/workflow_parameters"
+        },
+        {
+            "$ref": "#/definitions/new_group_2"
         }
-    ]
+    ],
+    "properties": {
+        "blast_outformat": {
+            "type": "integer",
+            "default": 6
+        }
+    }
 }

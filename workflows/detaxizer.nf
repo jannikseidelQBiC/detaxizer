@@ -36,7 +36,7 @@ ch_multiqc_custom_methods_description = params.multiqc_methods_description ? fil
 include { KRAKEN2PREPARATION } from '../modules/local/kraken2preparation'
 include { ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN } from '../modules/local/isolate_ids_from_kraken2_to_blastn'
 include { PREPARE_FASTA4BLASTN } from '../modules/local/prepare_fasta4blastn'
-
+include { CALCULATE_BLASTN_COVERAGE } from '../modules/local/calculate_blastn_coverage'
 //
 // SUBWORKFLOW: Consisting of a mix of local and nf-core/modules
 //
@@ -56,6 +56,8 @@ include { CUSTOM_DUMPSOFTWAREVERSIONS } from '../modules/nf-core/custom/dumpsoft
 include { FASTP } from '../modules/nf-core/fastp/main'
 include { KRAKEN2_KRAKEN2 } from '../modules/nf-core/kraken2/kraken2/main'
 include { BLAST_BLASTN } from '../modules/nf-core/blast/blastn/main'
+include { BLAST_MAKEBLASTDB } from '../modules/nf-core/blast/makeblastdb'
+
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -145,8 +147,39 @@ workflow DETAXIZER {
         combined_ch
     )
     ch_versions = ch_versions.mix(PREPARE_FASTA4BLASTN.out.versions)
+    
+    // 
+    // MODULE: Run BLASTN if --skip_blastn = true
+    //
+    ch_reference_fasta = Channel.empty()
+    if (!params.skip_blastn) {  // If skip_blastn is false, then execute the process
+        ch_reference_fasta =  file( params.fasta )
+        }
+    BLAST_MAKEBLASTDB (
+            ch_reference_fasta
+        )
+    ch_versions = ch_versions.mix(BLAST_MAKEBLASTDB.out.versions)
+
+    ch_fasta4blastn = PREPARE_FASTA4BLASTN.out.fasta
+        .flatMap { meta, fastaList ->
+            [ 
+                [['id': "${meta.id}_R1"], fastaList[0]],
+                [['id': "${meta.id}_R2"], fastaList[1]]
+            ]
+        }
 
 
+    BLAST_BLASTN (
+            ch_fasta4blastn,
+            BLAST_MAKEBLASTDB.out.db
+        )
+    ch_versions = ch_versions.mix(BLAST_BLASTN.out.versions)
+    
+    CALCULATE_BLASTN_COVERAGE (
+        BLAST_BLASTN.out.txt
+    )
+    ch_versions = ch_versions.mix(CALCULATE_BLASTN_COVERAGE.out.versions)
+    
 
     CUSTOM_DUMPSOFTWAREVERSIONS (
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
