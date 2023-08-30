@@ -36,7 +36,8 @@ ch_multiqc_custom_methods_description = params.multiqc_methods_description ? fil
 include { KRAKEN2PREPARATION } from '../modules/local/kraken2preparation'
 include { ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN } from '../modules/local/isolate_ids_from_kraken2_to_blastn'
 include { PREPARE_FASTA4BLASTN } from '../modules/local/prepare_fasta4blastn'
-include { CALCULATE_BLASTN_COVERAGE } from '../modules/local/calculate_blastn_coverage'
+include { FILTER_BLASTN_IDENTCOV } from '../modules/local/filter_blastn_identcov'
+
 //
 // SUBWORKFLOW: Consisting of a mix of local and nf-core/modules
 //
@@ -103,7 +104,7 @@ workflow DETAXIZER {
         []
     )
     ch_versions = ch_versions.mix(FASTP.out.versions)
-    FASTP.out.reads.dump()
+
     //
     // MODULE: Prepare Kraken2 Database
     //
@@ -138,16 +139,16 @@ workflow DETAXIZER {
     // MODULE: Extract the hits to fasta format
     //
 
-    combined_ch = FASTP.out.reads
+    ch_combined = FASTP.out.reads
             .join(
                 ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.classified, by: 0
                 ) 
     // TODO: REPLACE awk AND seqtk WITH TOOLS THAT CAN DISPLAY THEIR VERSION NUMBER
     PREPARE_FASTA4BLASTN(
-        combined_ch
+        ch_combined
     )
-    ch_versions = ch_versions.mix(PREPARE_FASTA4BLASTN.out.versions)
-    
+    ch_versions = ch_versions.mix(PREPARE_FASTA4BLASTN.out.versions)    
+
     // 
     // MODULE: Run BLASTN if --skip_blastn = true
     //
@@ -155,6 +156,7 @@ workflow DETAXIZER {
     if (!params.skip_blastn) {  // If skip_blastn is false, then execute the process
         ch_reference_fasta =  file( params.fasta )
         }
+    
     BLAST_MAKEBLASTDB (
             ch_reference_fasta
         )
@@ -175,10 +177,10 @@ workflow DETAXIZER {
         )
     ch_versions = ch_versions.mix(BLAST_BLASTN.out.versions)
     
-    CALCULATE_BLASTN_COVERAGE (
+    FILTER_BLASTN_IDENTCOV (
         BLAST_BLASTN.out.txt
     )
-    ch_versions = ch_versions.mix(CALCULATE_BLASTN_COVERAGE.out.versions)
+    ch_versions = ch_versions.mix(FILTER_BLASTN_IDENTCOV.out.versions)
     
 
     CUSTOM_DUMPSOFTWAREVERSIONS (

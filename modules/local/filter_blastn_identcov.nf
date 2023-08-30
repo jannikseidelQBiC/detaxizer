@@ -1,4 +1,4 @@
-process CALCULATE_BLASTN_COVERAGE {
+process FILTER_BLASTN_IDENTCOV {
 
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/python:3.10.4' :
@@ -7,17 +7,14 @@ process CALCULATE_BLASTN_COVERAGE {
         tuple val(meta), path(blast_output)
 
     output:
-        tuple val(meta), path('*coverage.txt'), emit: classified
+        tuple val(meta), path('*identcov.txt'), emit: classified
         path "versions.yml", emit: versions
 
     script:
     """
     #!/usr/bin/env python
 
-    def calculate_coverage(query_length, alignment_length):
-        return (alignment_length / query_length) * 100
-
-    with open('$blast_output', 'r') as f, open('${meta.id}.coverage.txt', 'w') as out:
+    with open('$blast_output', 'r') as f, open('${meta.id}.identcov.txt', 'w') as out:
         for line in f:
             parts = line.strip().split('\\t')
             query_id = parts[0]
@@ -25,8 +22,7 @@ process CALCULATE_BLASTN_COVERAGE {
             alignment_length = int(parts[3])
             start = int(parts[6])
             end = int(parts[7])
-            query_length = end - start + 1 # Assuming the provided data covers the entire query
-            coverage = calculate_coverage(query_length, alignment_length)
+            coverage = float(parts[12])
             if identity >= $params.blast_similarity and coverage >= $params.blast_coverage:
                 out.write(f"{query_id}\\tIdentity: {identity:.2f}%\\tCoverage: {coverage:.2f}%\\n")
 

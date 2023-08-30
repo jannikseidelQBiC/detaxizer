@@ -1,4 +1,5 @@
 process PREPARE_FASTA4BLASTN {
+
     container = "https://depot.galaxyproject.org/singularity/seqtk%3A1.4--he4a0461_1"
 
     input:

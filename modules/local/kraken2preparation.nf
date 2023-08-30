@@ -1,4 +1,5 @@
 process KRAKEN2PREPARATION {
+    
     input:
     path db 
 

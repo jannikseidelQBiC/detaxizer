@@ -318,6 +318,10 @@
             "description": "",
             "default": "",
             "properties": {
+                "kraken2confidence": {
+                    "type": "number",
+                    "default": 0.05
+                },
                 "kraken2db": {
                     "type": "string",
                     "default": "https://genome-idx.s3.amazonaws.com/kraken/k2_standard_08gb_20230605.tar.gz"
@@ -371,8 +375,8 @@
                 }
             }
         },
-        "new_group_2": {
-            "title": "New Group 2",
+        "blastn": {
+            "title": "Blastn",
             "type": "object",
             "description": "",
             "default": "",
@@ -387,6 +391,10 @@
                 "blast_similarity": {
                     "type": "number",
                     "default": 0.9
+                },
+                "blast_outformat": {
+                    "type": "string",
+                    "default": "\"6 qcov qcovhsp\""
                 }
             }
         }
@@ -420,13 +428,7 @@
             "$ref": "#/definitions/workflow_parameters"
         },
         {
-            "$ref": "#/definitions/new_group_2"
+            "$ref": "#/definitions/blastn"
         }
-    ],
-    "properties": {
-        "blast_outformat": {
-            "type": "integer",
-            "default": 6
-        }
-    }
+    ]
 }
