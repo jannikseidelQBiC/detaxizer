@@ -37,6 +37,7 @@ include { KRAKEN2PREPARATION } from '../modules/local/kraken2preparation'
 include { ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN } from '../modules/local/isolate_ids_from_kraken2_to_blastn'
 include { PREPARE_FASTA4BLASTN } from '../modules/local/prepare_fasta4blastn'
 include { FILTER_BLASTN_IDENTCOV } from '../modules/local/filter_blastn_identcov'
+include { PARSE_KRAKEN2REPORT } from '../modules/local/parse_kraken2report'
 
 //
 // SUBWORKFLOW: Consisting of a mix of local and nf-core/modules
@@ -126,6 +127,14 @@ workflow DETAXIZER {
     )
     ch_versions = ch_versions.mix(KRAKEN2_KRAKEN2.out.versions)
 
+    //
+    // MODULE: Parse the taxonomy from the kraken2 report
+    //
+
+    PARSE_KRAKEN2REPORT(
+        KRAKEN2_KRAKEN2.out.report.take(1)
+    )
+
     //    
     // MODULE: Isolate the hits for a certain taxa 
     //
@@ -138,7 +147,7 @@ workflow DETAXIZER {
     //
     // MODULE: Extract the hits to fasta format
     //
-
+    // skip from here onward if isolate from kraken2 is empyty using .branch
     ch_combined = FASTP.out.reads
             .join(
                 ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.classified, by: 0
@@ -150,7 +159,7 @@ workflow DETAXIZER {
     ch_versions = ch_versions.mix(PREPARE_FASTA4BLASTN.out.versions)    
 
     // 
-    // MODULE: Run BLASTN if --skip_blastn = true
+    // MODULE: Run BLASTN if --skip_blastn = false
     //
     ch_reference_fasta = Channel.empty()
     if (!params.skip_blastn) {  // If skip_blastn is false, then execute the process
