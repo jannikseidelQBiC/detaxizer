@@ -128,7 +128,7 @@ workflow DETAXIZER {
     ch_versions = ch_versions.mix(KRAKEN2_KRAKEN2.out.versions)
 
     //
-    // MODULE: Parse the taxonomy from the kraken2 report
+    // MODULE: Parse the taxonomy from the kraken2 report and return all subclasses of the tax2filter
     //
 
     PARSE_KRAKEN2REPORT(
@@ -136,13 +136,15 @@ workflow DETAXIZER {
     )
 
     //    
-    // MODULE: Isolate the hits for a certain taxa 
+    // MODULE: Isolate the hits for a certain taxa and subclasses 
     //
+    
+    KRAKEN2_KRAKEN2.out.classified_reads_assignment.combine(PARSE_KRAKEN2REPORT.out.txt).set{ ch_combined }
 
     ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN (
-        KRAKEN2_KRAKEN2.out.classified_reads_assignment
+        ch_combined
     )
-    ch_versions = ch_versions.mix(ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.versions)
+    //ch_versions = ch_versions.mix(ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.versions)
     
     //
     // MODULE: Extract the hits to fasta format

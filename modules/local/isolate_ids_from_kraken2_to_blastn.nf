@@ -1,7 +1,8 @@
 process ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN {
 
     input:
-        tuple val(meta), path(kraken2results)
+        tuple val(meta), path(kraken2results), path(tax2filter)
+
 
     output:
         tuple val(meta), path('*classified.txt'), emit: classified
@@ -9,11 +10,17 @@ process ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN {
 
     script:
     """
-    if [ \$(grep -c '${params.tax2filter}' $kraken2results) -gt 0 ]; then
-        grep '${params.tax2filter}' $kraken2results > ${meta.id}.classified.txt
+    while IFS= read -r line
+    do
+    line=\$(echo -n "\$line" | tr -d '\n')
+    if [ \$(grep -c "\$line" $kraken2results) -gt 0 ]; then
+        grep "\$line" $kraken2results >> ${meta.id}.classified.txt
     else
-        touch ${meta.id}.classified.txt
+        if [ ! -f "${meta.id}.classified.txt" ]; then
+            touch ${meta.id}.classified.txt
+        fi
     fi
+    done < $tax2filter
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
