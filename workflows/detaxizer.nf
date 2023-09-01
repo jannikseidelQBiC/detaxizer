@@ -85,7 +85,12 @@ workflow DETAXIZER {
     // TODO: Make the map for single ended 
     ch_input = Channel.fromSamplesheet('input')
     .map { meta, fastq_1, fastq_2 -> 
-        fastq_2 ? [meta, [fastq_1, fastq_2]] : [meta.single_end, fastq_1] 
+        if(fastq_2) {
+            return [meta, [fastq_1, fastq_2]]
+        } else {
+            meta.single_end = true
+            return [meta, fastq_1]
+        }
     }
     //
     // MODULE: Run FastQC
@@ -178,12 +183,17 @@ workflow DETAXIZER {
 
     ch_fasta4blastn = PREPARE_FASTA4BLASTN.out.fasta
         .flatMap { meta, fastaList ->
-            [ 
-                [['id': "${meta.id}_R1"], fastaList[0]],
-                [['id': "${meta.id}_R2"], fastaList[1]]
-            ]
+            if (fastaList.size() == 2) {
+        // Handle paired-end FASTA files
+        return [
+            [['id': "${meta.id}_R1"], fastaList[0]],
+            [['id': "${meta.id}_R2"], fastaList[1]]
+        ]
+    } else {
+        // Handle single-end FASTA files
+        return [[['id': "${meta.id}"], fastaList]]
+    }
         }
-
 
     BLAST_BLASTN (
             ch_fasta4blastn,
