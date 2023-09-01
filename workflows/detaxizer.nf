@@ -84,8 +84,9 @@ workflow DETAXIZER {
     // ! There is currently no tooling to help you write a sample sheet schema
     // TODO: Make the map for single ended 
     ch_input = Channel.fromSamplesheet('input')
-        .map{meta, fastq_1, fastq_2 -> [meta,[fastq_1, fastq_2]]}
-    
+    .map { meta, fastq_1, fastq_2 -> 
+        fastq_2 ? [meta, [fastq_1, fastq_2]] : [meta.single_end, fastq_1] 
+    }
     //
     // MODULE: Run FastQC
     //
@@ -134,7 +135,8 @@ workflow DETAXIZER {
     PARSE_KRAKEN2REPORT(
         KRAKEN2_KRAKEN2.out.report.take(1)
     )
-
+    ch_versions = ch_versions.mix(PARSE_KRAKEN2REPORT.out.versions)
+    
     //    
     // MODULE: Isolate the hits for a certain taxa and subclasses 
     //
@@ -144,7 +146,8 @@ workflow DETAXIZER {
     ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN (
         ch_combined
     )
-    //ch_versions = ch_versions.mix(ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.versions)
+
+    ch_versions = ch_versions.mix(ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.versions)
     
     //
     // MODULE: Extract the hits to fasta format
@@ -193,7 +196,6 @@ workflow DETAXIZER {
     )
     ch_versions = ch_versions.mix(FILTER_BLASTN_IDENTCOV.out.versions)
     
-
     CUSTOM_DUMPSOFTWAREVERSIONS (
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
     )
