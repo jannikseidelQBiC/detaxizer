@@ -10,12 +10,10 @@ process PARSE_KRAKEN2REPORT {
     output:
         path "versions.yml", emit: versions
         path "*.txt", emit: txt
-        //path "*.json", emit: json
     
     script:
     """
     #!/usr/bin/env python
-import json
 import subprocess
 
 
