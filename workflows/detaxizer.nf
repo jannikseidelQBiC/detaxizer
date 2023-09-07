@@ -38,6 +38,7 @@ include { ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN } from '../modules/local/isolate_id
 include { PREPARE_FASTA4BLASTN } from '../modules/local/prepare_fasta4blastn'
 include { FILTER_BLASTN_IDENTCOV } from '../modules/local/filter_blastn_identcov'
 include { PARSE_KRAKEN2REPORT } from '../modules/local/parse_kraken2report'
+include { SUMMARIZER } from '../modules/local/summarizer'
 
 //
 // SUBWORKFLOW: Consisting of a mix of local and nf-core/modules
@@ -84,14 +85,39 @@ workflow DETAXIZER {
     // ! There is currently no tooling to help you write a sample sheet schema
     // TODO: Make the map for single ended 
     ch_input = Channel.fromSamplesheet('input')
-    .map { meta, fastq_1, fastq_2 -> 
-        if(fastq_2) {
+
+    // check wether the sample sheet is correctly formated    
+    ch_input.map {
+        meta, fastq_1, fastq_2, fastq_3 ->
+        if (!fastq_1 && !fastq_3){
+            error("Please provide at least one single end file as input in the sample sheet for ${meta.id}.")
+        } else if (!fastq_1 && fastq_2 && fastq_3){
+            error("Please provide single end reads in following format in the sample sheet: base name, 
+            fastq_1,,fastq_3. fastq_1 is the short read file, fastq_3 the long read file. The wrongly
+            formated entry is ${meta.id}.")
+        }
+    }
+
+    ch_input = ch_input.map { meta, fastq_1, fastq_2, fastq_3 -> 
+        if(fastq_2 && fastq_3) {
+            meta.single_end = false
+            meta.long_read = true
+            return [meta, [fastq_1, fastq_2], fastq_3]
+        }else if(fastq_2 && !fastq_3) {
+            meta.single_end = false
+            meta.long_read = false
             return [meta, [fastq_1, fastq_2]]
+        }else if(fastq_3 && !fastq_2) {
+            meta.single_end = true
+            meta.long_read = false
+            return [meta, fastq_3]
         } else {
             meta.single_end = true
+            meta.long_read = false
             return [meta, fastq_1]
         }
     }
+
     //
     // MODULE: Run FastQC
     //
@@ -153,14 +179,14 @@ workflow DETAXIZER {
     )
 
     ch_versions = ch_versions.mix(ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.versions)
-    
+
     //
     // MODULE: Extract the hits to fasta format
     //
-    // skip from here onward if isolate from kraken2 is empyty using .branch
+    // TODO: skip from here onward if isolate from kraken2 is empyty using .branch
     ch_combined = FASTP.out.reads
             .join(
-                ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.classified, by: 0
+                ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.classified, by: [0]
                 ) 
     // TODO: REPLACE awk AND seqtk WITH TOOLS THAT CAN DISPLAY THEIR VERSION NUMBER
     PREPARE_FASTA4BLASTN(
@@ -186,12 +212,12 @@ workflow DETAXIZER {
             if (fastaList.size() == 2) {
         // Handle paired-end FASTA files
         return [
-            [['id': "${meta.id}_R1"], fastaList[0]],
-            [['id': "${meta.id}_R2"], fastaList[1]]
+            [['id': "${meta.id}_R1", 'single_end': "${meta.single_end}"], fastaList[0]],
+            [['id': "${meta.id}_R2", 'single_end': "${meta.single_end}"], fastaList[1]]
         ]
     } else {
         // Handle single-end FASTA files
-        return [[['id': "${meta.id}"], fastaList]]
+        return [[['id': "${meta.id}", 'single_end': "${meta.single_end}"], fastaList]]
     }
         }
 
@@ -201,11 +227,29 @@ workflow DETAXIZER {
         )
     ch_versions = ch_versions.mix(BLAST_BLASTN.out.versions)
     
+    ch_combined_blast = BLAST_BLASTN.out.txt
+                                .map { meta, path -> 
+        [ ['id': meta.id.replaceAll("(_R1|_R2)", ""), 'single_end': "${meta.single_end}"], path ]
+    }
+
+
+    ch_combined_blast = ch_combined_blast
+                               .groupTuple(by: [0])
+                               .map { meta, paths -> [ meta, paths.flatten() ] }
+
     FILTER_BLASTN_IDENTCOV (
         BLAST_BLASTN.out.txt
     )
     ch_versions = ch_versions.mix(FILTER_BLASTN_IDENTCOV.out.versions)
+    ch_filtered_combined = FILTER_BLASTN_IDENTCOV.out.classified.map{ meta, path -> 
+    [ ['id': meta.id.replaceAll("(_R1|_R2)", ""), 'single_end': "${meta.single_end}"], path ]
+    }
+    ch_filtered_combined = ch_filtered_combined
+        .groupTuple(by: [0])
+        .map { meta, paths -> [meta, paths.flatten()]}
     
+
+
     CUSTOM_DUMPSOFTWAREVERSIONS (
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
     )
