@@ -22,9 +22,10 @@ process FILTER_BLASTN_IDENTCOV {
             alignment_length = int(parts[3])
             start = int(parts[6])
             end = int(parts[7])
-            coverage = float(parts[12])
-            if identity >= $params.blast_similarity and coverage >= $params.blast_coverage:
-                out.write(f"{query_id}\\tIdentity: {identity:.2f}%\\tCoverage: {coverage:.2f}%\\n")
+            coverage_per_subject = float(parts[12])
+            coverage_per_hsp = float(parts[13])
+            if identity >= $params.blast_similarity and coverage_per_subject > $params.blast_coverage and coverage_per_hsp > $params.blast_coverage:
+                out.write(f"{query_id}\\t{identity:.2f}\\t{coverage_per_subject:.2f}\\t{coverage_per_hsp:.2f}\\n")
 
     import subprocess
     def get_version():
