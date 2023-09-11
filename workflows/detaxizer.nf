@@ -34,10 +34,12 @@ ch_multiqc_custom_methods_description = params.multiqc_methods_description ? fil
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 include { KRAKEN2PREPARATION } from '../modules/local/kraken2preparation'
+include { PARSE_KRAKEN2REPORT } from '../modules/local/parse_kraken2report'
 include { ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN } from '../modules/local/isolate_ids_from_kraken2_to_blastn'
 include { PREPARE_FASTA4BLASTN } from '../modules/local/prepare_fasta4blastn'
 include { FILTER_BLASTN_IDENTCOV } from '../modules/local/filter_blastn_identcov'
-include { PARSE_KRAKEN2REPORT } from '../modules/local/parse_kraken2report'
+include { SUMMARY_KRAKEN2 } from '../modules/local/summary_kraken2'
+include { SUMMARY_BLASTN } from '../modules/local/summary_blastn'
 include { SUMMARIZER } from '../modules/local/summarizer'
 
 //
@@ -63,12 +65,29 @@ include { BLAST_MAKEBLASTDB } from '../modules/nf-core/blast/makeblastdb'
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    CUSTOM FUNCTIONS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
+def isNonNull(item) {
+    if (item instanceof List) {
+        return item.every { isNonNull(it) }
+    } else if (item instanceof Map) {
+        return item.values().every { isNonNull(it) }
+    } else {
+        return item != null
+    }
+}
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
 // Info required for completion email and summary
 def multiqc_report = []
+
+
+
 
 workflow DETAXIZER {
 
@@ -92,37 +111,84 @@ workflow DETAXIZER {
         if (!fastq_1 && !fastq_3){
             error("Please provide at least one single end file as input in the sample sheet for ${meta.id}.")
         } else if (!fastq_1 && fastq_2 && fastq_3){
-            error("Please provide single end reads in following format in the sample sheet: base name, 
-            fastq_1,,fastq_3. fastq_1 is the short read file, fastq_3 the long read file. The wrongly
-            formated entry is ${meta.id}.")
+            error("Please provide single end reads in following format in the sample sheet: base name, fastq_1,,fastq_3. fastq_1 is the short read file, fastq_3 the long read file. The wrongly formated entry is ${meta.id}.")
         }
     }
 
     ch_input = ch_input.map { meta, fastq_1, fastq_2, fastq_3 -> 
-        if(fastq_2 && fastq_3) {
+        if(fastq_1 && fastq_2 && fastq_3) {
             meta.single_end = false
             meta.long_read = true
-            return [meta, [fastq_1, fastq_2], fastq_3]
-        }else if(fastq_2 && !fastq_3) {
+            return [meta, fastq_1, fastq_2, fastq_3]
+        }else if(fastq_1 && fastq_2 && !fastq_3) {
             meta.single_end = false
             meta.long_read = false
-            return [meta, [fastq_1, fastq_2]]
-        }else if(fastq_3 && !fastq_2) {
+            return [meta, fastq_1, fastq_2, null]
+        }else if(fastq_3 && !fastq_2 && !fastq_1) {
             meta.single_end = true
-            meta.long_read = false
-            return [meta, fastq_3]
+            meta.long_read = true
+            return [meta, null,null, fastq_3]
+        } else if (fastq_1 && fastq_3){
+            meta.single_end = true
+            meta.long_read = true
+            return [meta, fastq_1,null, fastq_3]
         } else {
             meta.single_end = true
             meta.long_read = false
-            return [meta, fastq_1]
+            return [meta, fastq_1, null, null]
         }
     }
+
+
+
+    ch_short_reads = ch_input.map { meta, fastq_1, fastq_2, fastq_3 ->
+        if (!fastq_1){
+            return null
+        } else if (!fastq_2 && !fastq_3){
+            meta.combined_short_long = false
+            meta.id = "${meta.id}_R1"
+            return [meta, fastq_1]
+        } else if (!fastq_2 && fastq_3){
+            meta.combined_short_long = true
+            meta.id = "${meta.id}_R1"
+            return [meta, fastq_1]
+        } else if (fastq_2 && !fastq_3){
+            meta.combined_short_long = false
+            return [meta, [fastq_1,fastq_2]]
+        }else if (fastq_2 && fastq_3){
+            meta.combined_short_long = true
+            return [meta, [fastq_1,fastq_2]]
+        } 
+    }.filter { isNonNull(it) }
+
+    ch_long_reads = ch_input.map { meta, fastq_1, fastq_2, fastq_3 ->
+        if (!fastq_1 && fastq_3){
+            def newmeta1 = meta.clone()
+            newmeta1.id = "${meta.id}_R3"
+            newmeta1.combined_short_long = false
+            newmeta1.single_end = true
+            return [newmeta1, fastq_3]
+        } else if (fastq_1 && fastq_3){
+            def newmeta2 = meta.clone()
+            newmeta2.id = "${meta.id}_R3"
+
+            newmeta2.combined_short_long = true
+            newmeta2.single_end = true
+            return [newmeta2, fastq_3]
+        } else {
+            return null
+        }
+    }.filter { isNonNull(it) }
+
+
+    ch_combined_short_long = ch_short_reads.mix(ch_long_reads)
+
 
     //
     // MODULE: Run FastQC
     //
     FASTQC (
-        ch_input
+        ch_combined_short_long
     )
     ch_versions = ch_versions.mix(FASTQC.out.versions.first())
 
@@ -131,7 +197,7 @@ workflow DETAXIZER {
     //
 
     FASTP (
-        ch_input,
+        ch_combined_short_long,
         [],
         params.fastp_save_trimmed_fail,
         []
@@ -181,6 +247,16 @@ workflow DETAXIZER {
     ch_versions = ch_versions.mix(ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.versions)
 
     //
+    // MODULE: Summarize the kraken2 results and the isolated kraken2 hits
+    //
+
+    // preparation of the channels
+    ch_prepare_summary_kraken2 = KRAKEN2_KRAKEN2.out.classified_reads_assignment.join(ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.classified)
+    //ch_prepare_summary_kraken2.dump(tag: 'prepare_summary_kraken2')
+    // run of the process
+    ch_kraken2_summary = SUMMARY_KRAKEN2(ch_prepare_summary_kraken2)
+
+    //
     // MODULE: Extract the hits to fasta format
     //
     // TODO: skip from here onward if isolate from kraken2 is empyty using .branch
@@ -207,20 +283,23 @@ workflow DETAXIZER {
         )
     ch_versions = ch_versions.mix(BLAST_MAKEBLASTDB.out.versions)
 
+    //PREPARE_FASTA4BLASTN.out.fasta.dump(tag: "PREPARE_FASTA4BLASTN")
     ch_fasta4blastn = PREPARE_FASTA4BLASTN.out.fasta
         .flatMap { meta, fastaList ->
             if (fastaList.size() == 2) {
         // Handle paired-end FASTA files
         return [
-            [['id': "${meta.id}_R1", 'single_end': "${meta.single_end}"], fastaList[0]],
-            [['id': "${meta.id}_R2", 'single_end': "${meta.single_end}"], fastaList[1]]
+            [['id': "${meta.id}_R1", 'single_end': false], fastaList[0]],
+            [['id': "${meta.id}_R2", 'single_end': false], fastaList[1]]
         ]
+
     } else {
         // Handle single-end FASTA files
-        return [[['id': "${meta.id}", 'single_end': "${meta.single_end}"], fastaList]]
-    }
+        return [[['id': "${meta.id}", 'single_end': true], fastaList]]
+    } 
+      
         }
-
+    //ch_fasta4blastn.dump(tag: "ch_fasta4blastn")
     BLAST_BLASTN (
             ch_fasta4blastn,
             BLAST_MAKEBLASTDB.out.db
@@ -229,7 +308,7 @@ workflow DETAXIZER {
     
     ch_combined_blast = BLAST_BLASTN.out.txt
                                 .map { meta, path -> 
-        [ ['id': meta.id.replaceAll("(_R1|_R2)", ""), 'single_end': "${meta.single_end}"], path ]
+        [ ['id': meta.id.replaceAll("(_R1|_R2|_R3)", "")], path ]
     }
 
 
@@ -242,14 +321,42 @@ workflow DETAXIZER {
     )
     ch_versions = ch_versions.mix(FILTER_BLASTN_IDENTCOV.out.versions)
     ch_filtered_combined = FILTER_BLASTN_IDENTCOV.out.classified.map{ meta, path -> 
-    [ ['id': meta.id.replaceAll("(_R1|_R2)", ""), 'single_end': "${meta.single_end}"], path ]
+    [ ['id': meta.id.replaceAll("(_R1|_R2|_R3)", "")], path ]
     }
     ch_filtered_combined = ch_filtered_combined
-        .groupTuple(by: [0])
-        .map { meta, paths -> [meta, paths.flatten()]}
+        .groupTuple ()
+        .map { meta, paths -> 
+        paths = paths.flatten()
+        return [meta, paths] }
     
+    ch_blastn_combined = ch_combined_blast.join(ch_filtered_combined, remainder: true)
+    //ch_blastn_combined.dump()
+    ch_blastn_combined = ch_blastn_combined.map{meta, blastn, filteredblastn -> 
+    if (blastn[0] == null){
+        blastn[0] = "${projectDir}/assets/NO_FILE1"
+    }
+    if (blastn[1] == null){
+        blastn[1] = "${projectDir}/assets/NO_FILE2"
+    }
+    if (blastn[2] == null){
+        blastn[2] = "${projectDir}/assets/NO_FILE3"
+    }
+    if (filteredblastn[0] == null){
+        filteredblastn[0] = "${projectDir}/assets/NO_FILE4"
+    }
+    if (filteredblastn[1] == null){
+        filteredblastn[1] = "${projectDir}/assets/NO_FILE5"
+    }
+    if (filteredblastn[2] == null){
+        filteredblastn[2] = "${projectDir}/assets/NO_FILE6"
+    }
+    return [meta, blastn[0], blastn[1], blastn[2], filteredblastn[0], filteredblastn[1], filteredblastn[2]]}
 
 
+    //ch_blastn_combined.dump()
+    SUMMARY_BLASTN (
+        ch_blastn_combined
+    )
     CUSTOM_DUMPSOFTWAREVERSIONS (
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
     )

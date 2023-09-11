@@ -19,8 +19,10 @@ process PREPARE_FASTA4BLASTN {
     END_VERSIONS
 
     if [ "$meta.single_end" == "true" ]; then
+
         awk -F'\t' '{print \$2}' ${kraken2results} > ids.txt
         seqtk subseq ${trimmedreads} ids.txt | seqtk seq -A - > ${meta.id}.fasta    
+
     else
         awk -F'\t' '{print \$2"/1"}' ${kraken2results} > ids_R1.txt
         awk -F'\t' '{print \$2"/2"}' ${kraken2results} > ids_R2.txt
