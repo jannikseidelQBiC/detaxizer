@@ -353,10 +353,11 @@ workflow DETAXIZER {
     return [meta, blastn[0], blastn[1], blastn[2], filteredblastn[0], filteredblastn[1], filteredblastn[2]]}
 
 
-    //ch_blastn_combined.dump()
     SUMMARY_BLASTN (
         ch_blastn_combined
     )
+    
+
     CUSTOM_DUMPSOFTWAREVERSIONS (
         ch_versions.unique().collectFile(name: 'collated_versions.yml')
     )
