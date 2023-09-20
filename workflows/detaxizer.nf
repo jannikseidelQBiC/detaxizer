@@ -93,7 +93,7 @@ workflow DETAXIZER {
     ch_input = Channel.fromSamplesheet('input')
 
 
-    // check wether the sample sheet is correctly formated    
+    // check whether the sample sheet is correctly formated    
     ch_input.map {
         meta, fastq_1, fastq_2, fastq_3 ->
         if (!fastq_1 && !fastq_3){
@@ -218,20 +218,38 @@ workflow DETAXIZER {
 
     // preparation of the channels
     ch_prepare_summary_kraken2 = KRAKEN2_KRAKEN2.out.classified_reads_assignment.join(ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.classified)
-    //ch_prepare_summary_kraken2.dump(tag: 'prepare_summary_kraken2')
+    ch_prepare_summary_kraken2 = ch_prepare_summary_kraken2.map { 
+        meta, path1, path2 -> 
+        [ ['id': meta.id ], [ path1, path2 ] ] 
+    }
+    
+    ch_prepare_summary_kraken2.dump(tag: "prepare_step_1")
+
+    ch_combined_kraken2 = ch_prepare_summary_kraken2
+        .map { meta, path -> 
+        [ ['id': meta.id.replaceAll("(_R1|_R2|_R3)", "")], path ]
+        }
+
+
+    ch_combined_kraken2 = ch_combined_kraken2
+                               .map { meta, paths -> [ meta, paths.flatten() ] }
+                               .groupTuple(by: [0], size: 5, remainder: true)
+
+    ch_combined_kraken2.dump(tag: "prepare_step_2")
+
     // run of the process
-    ch_kraken2_summary = SUMMARY_KRAKEN2(ch_prepare_summary_kraken2)
+    //ch_kraken2_summary = SUMMARY_KRAKEN2(ch_prepare_summary_kraken2)
 
     //
     // MODULE: Extract the hits to fasta format
     //
     // TODO: skip from here onward if isolate from kraken2 is empyty using .branch
     ch_combined = FASTP.out.reads
-            .join(
-                ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.classified, by: [0]
-                ) 
+        .join(
+            ISOLATE_IDS_FROM_KRAKEN2_TO_BLASTN.out.classified, by: [0]
+        ) 
     // TODO: REPLACE awk AND seqtk WITH TOOLS THAT CAN DISPLAY THEIR VERSION NUMBER
-    PREPARE_FASTA4BLASTN(
+    PREPARE_FASTA4BLASTN (
         ch_combined
     )
     ch_versions = ch_versions.mix(PREPARE_FASTA4BLASTN.out.versions)    
@@ -239,14 +257,16 @@ workflow DETAXIZER {
     // 
     // MODULE: Run BLASTN if --skip_blastn = false
     //
+    
     ch_reference_fasta = Channel.empty()
+    
     if (!params.skip_blastn) {  // If skip_blastn is false, then execute the process
         ch_reference_fasta =  file( params.fasta )
-        }
+    }
     
     BLAST_MAKEBLASTDB (
             ch_reference_fasta
-        )
+    )
     ch_versions = ch_versions.mix(BLAST_MAKEBLASTDB.out.versions)
 
     //PREPARE_FASTA4BLASTN.out.fasta.dump(tag: "PREPARE_FASTA4BLASTN")
@@ -254,22 +274,24 @@ workflow DETAXIZER {
         .flatMap { meta, fastaList ->
             if (fastaList.size() == 2) {
         // Handle paired-end FASTA files
-        return [
-            [['id': "${meta.id}_R1", 'single_end': false], fastaList[0]],
-            [['id': "${meta.id}_R2", 'single_end': false], fastaList[1]]
-        ]
+            return [
+                [['id': "${meta.id}_R1", 'single_end': false], fastaList[0]],
+                [['id': "${meta.id}_R2", 'single_end': false], fastaList[1]]
+            ]
 
-    } else {
+        } else {
         // Handle single-end FASTA files
-        return [[['id': "${meta.id}", 'single_end': true], fastaList]]
-    } 
+        return [ [ [ 'id': "${meta.id}", 'single_end': true], fastaList ] ]
+        } 
       
         }
     //ch_fasta4blastn.dump(tag: "ch_fasta4blastn")
+    
     BLAST_BLASTN (
-            ch_fasta4blastn,
-            BLAST_MAKEBLASTDB.out.db
-        )
+        ch_fasta4blastn,
+        BLAST_MAKEBLASTDB.out.db
+    )
+    
     ch_versions = ch_versions.mix(BLAST_BLASTN.out.versions)
     
     ch_combined_blast = BLAST_BLASTN.out.txt
@@ -287,37 +309,42 @@ workflow DETAXIZER {
     )
     ch_versions = ch_versions.mix(FILTER_BLASTN_IDENTCOV.out.versions)
     
-    ch_filtered_combined = FILTER_BLASTN_IDENTCOV.out.classified.map{ meta, path -> 
-    [ ['id': meta.id.replaceAll("(_R1|_R2|_R3)", "")], path ]
+    ch_filtered_combined = FILTER_BLASTN_IDENTCOV.out.classified.map { 
+        meta, path -> 
+        [ ['id': meta.id.replaceAll("(_R1|_R2|_R3)", "")], path ]
     }
     ch_filtered_combined = ch_filtered_combined
         .groupTuple ()
-        .map { meta, paths -> 
-        paths = paths.flatten()
-        return [meta, paths] }
+        .map {
+            meta, paths -> 
+            paths = paths.flatten()
+            return [meta, paths] 
+        }
     
     ch_blastn_combined = ch_combined_blast.join(ch_filtered_combined, remainder: true)
     //ch_blastn_combined.dump()
-    ch_blastn_combined = ch_blastn_combined.map{meta, blastn, filteredblastn -> 
-    if (blastn[0] == null){
-        blastn[0] = "${projectDir}/assets/NO_FILE1"
-    }
-    if (blastn[1] == null){
-        blastn[1] = "${projectDir}/assets/NO_FILE2"
-    }
-    if (blastn[2] == null){
-        blastn[2] = "${projectDir}/assets/NO_FILE3"
-    }
-    if (filteredblastn[0] == null){
-        filteredblastn[0] = "${projectDir}/assets/NO_FILE4"
-    }
-    if (filteredblastn[1] == null){
-        filteredblastn[1] = "${projectDir}/assets/NO_FILE5"
-    }
-    if (filteredblastn[2] == null){
-        filteredblastn[2] = "${projectDir}/assets/NO_FILE6"
-    }
-    return [meta, blastn[0], blastn[1], blastn[2], filteredblastn[0], filteredblastn[1], filteredblastn[2]]}
+    ch_blastn_combined = ch_blastn_combined.map { 
+        meta, blastn, filteredblastn -> 
+            if (blastn[0] == null){
+                blastn[0] = "${projectDir}/assets/NO_FILE1"
+            }
+            if (blastn[1] == null){
+                blastn[1] = "${projectDir}/assets/NO_FILE2"
+            }
+            if (blastn[2] == null){
+                blastn[2] = "${projectDir}/assets/NO_FILE3"
+            }
+            if (filteredblastn[0] == null){
+                filteredblastn[0] = "${projectDir}/assets/NO_FILE4"
+            }
+            if (filteredblastn[1] == null){
+                filteredblastn[1] = "${projectDir}/assets/NO_FILE5"
+            }
+            if (filteredblastn[2] == null){
+                filteredblastn[2] = "${projectDir}/assets/NO_FILE6"
+            }
+            return [meta, blastn[0], blastn[1], blastn[2], filteredblastn[0], filteredblastn[1], filteredblastn[2]]
+        }
 
     // TODO: Get Software version and prepare it for multiqc
     ch_blastn_summary = SUMMARY_BLASTN (
@@ -328,14 +355,14 @@ workflow DETAXIZER {
     // MODULE: Summarize the classification process
     //
 
-    ch_kraken2_summary = ch_kraken2_summary.map { meta, paths -> [paths] }
+    //ch_kraken2_summary = ch_kraken2_summary.map { meta, paths -> [paths] }
     ch_blastn_summary = ch_blastn_summary.map { meta, paths -> [paths]}
 
-    ch_summary = ch_kraken2_summary.mix(ch_blastn_summary).collect()
+    //ch_summary = ch_kraken2_summary.mix(ch_blastn_summary).collect()
 
-    SUMMARIZER (
-        ch_summary
-    )
+    //SUMMARIZER (
+    //    ch_summary
+    //)
 
     
 
