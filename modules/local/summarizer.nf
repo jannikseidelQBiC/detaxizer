@@ -1,10 +1,10 @@
 process SUMMARIZER {
 
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/python:3.10.4' :
-        'biocontainers/python:3.10.4' }"
+        'https://depot.galaxyproject.org/singularity/pandas:1.5.2' :
+        'biocontainers/pandas:1.5.2' }"
     input:
-        tuple val(meta),path(tosummarize)
+        path(tosummarize)
         
 
     output:
@@ -14,10 +14,14 @@ process SUMMARIZER {
     script:
     """
     #!/usr/bin/env python
-    tosummarize_list = "${tosummarize}".split(' ')
-    for entry in tosummarize_list:
-        print(entry)
+    import glob
+    files_kraken2 = glob.glob('*.kraken2_summary.tsv')
+    files_blastn = glob.glob('*.blastn_summary.tsv')
+
     with open("summary.tsv", 'w') as f:
-        f.write("test")
+        for file in files_kraken2:
+            f.write(file + '\\n')
+        for file in files_blastn:
+            f.write(file + '\\n')
     """
 }

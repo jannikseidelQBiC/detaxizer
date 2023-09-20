@@ -63,20 +63,7 @@ include { KRAKEN2_KRAKEN2 } from '../modules/nf-core/kraken2/kraken2/main'
 include { BLAST_BLASTN } from '../modules/nf-core/blast/blastn/main'
 include { BLAST_MAKEBLASTDB } from '../modules/nf-core/blast/makeblastdb'
 
-/*
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    CUSTOM FUNCTIONS
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-*/
-def isNonNull(item) {
-    if (item instanceof List) {
-        return item.every { isNonNull(it) }
-    } else if (item instanceof Map) {
-        return item.values().every { isNonNull(it) }
-    } else {
-        return item != null
-    }
-}
+
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -105,6 +92,7 @@ workflow DETAXIZER {
     // TODO: Make the map for single ended 
     ch_input = Channel.fromSamplesheet('input')
 
+
     // check wether the sample sheet is correctly formated    
     ch_input.map {
         meta, fastq_1, fastq_2, fastq_3 ->
@@ -115,6 +103,53 @@ workflow DETAXIZER {
         }
     }
 
+  
+
+    ch_input.branch { 
+	    shortReads: it[1]
+	    }.set { 
+            ch_short 
+        }
+
+    ch_short.shortReads.map{
+        meta, fastq_1, fastq_2, fastq_3 ->
+        if (fastq_2){
+            def newMeta = meta.clone()
+            newMeta.single_end = false
+            newMeta.long_reads = false
+            return [newMeta, [fastq_1, fastq_2]]
+        } else {
+            def newMeta = meta.clone()
+            newMeta.id = "${newMeta.id}_R1"
+            newMeta.single_end = true
+            newMeta.long_reads = false
+            return [newMeta, fastq_1]
+        }
+    }.set{
+        ch_short
+    }
+
+    ch_input.branch {
+        longReads: it[3]
+    }.set { 
+        ch_long
+    }
+
+    ch_long.longReads.map {
+        meta, fastq_1, fastq_2, fastq_3 ->
+        def newMeta = meta.clone()
+        newMeta.id = "${newMeta.id}_R3"
+        newMeta.single_end = true
+        newMeta.long_reads = true
+        return [newMeta, fastq_3]
+    }.set {
+        ch_long
+    }
+
+    ch_long.view()
+
+
+/*
     ch_input = ch_input.map { meta, fastq_1, fastq_2, fastq_3 -> 
         if(fastq_1 && fastq_2 && fastq_3) {
             meta.single_end = false
@@ -179,9 +214,10 @@ workflow DETAXIZER {
             return null
         }
     }.filter { isNonNull(it) }
+*/
 
 
-    ch_combined_short_long = ch_short_reads.mix(ch_long_reads)
+    ch_combined_short_long = ch_short.mix(ch_long)
 
 
     //
@@ -320,6 +356,7 @@ workflow DETAXIZER {
         BLAST_BLASTN.out.txt
     )
     ch_versions = ch_versions.mix(FILTER_BLASTN_IDENTCOV.out.versions)
+    
     ch_filtered_combined = FILTER_BLASTN_IDENTCOV.out.classified.map{ meta, path -> 
     [ ['id': meta.id.replaceAll("(_R1|_R2|_R3)", "")], path ]
     }
@@ -352,10 +389,24 @@ workflow DETAXIZER {
     }
     return [meta, blastn[0], blastn[1], blastn[2], filteredblastn[0], filteredblastn[1], filteredblastn[2]]}
 
-
-    SUMMARY_BLASTN (
+    // TODO: Get Software version and prepare it for multiqc
+    ch_blastn_summary = SUMMARY_BLASTN (
         ch_blastn_combined
     )
+
+    //
+    // MODULE: Summarize the classification process
+    //
+
+    ch_kraken2_summary = ch_kraken2_summary.map { meta, paths -> [paths] }
+    ch_blastn_summary = ch_blastn_summary.map { meta, paths -> [paths]}
+
+    ch_summary = ch_kraken2_summary.mix(ch_blastn_summary).collect()
+
+    SUMMARIZER (
+        ch_summary
+    )
+
     
 
     CUSTOM_DUMPSOFTWAREVERSIONS (
@@ -384,6 +435,8 @@ workflow DETAXIZER {
         ch_multiqc_logo.toList()
     )
     multiqc_report = MULTIQC.out.report.toList()
+
+    
 }
 
 /*
