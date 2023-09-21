@@ -222,8 +222,6 @@ workflow DETAXIZER {
         meta, path1, path2 -> 
         [ ['id': meta.id ], [ path1, path2 ] ] 
     }
-    
-    ch_prepare_summary_kraken2.dump(tag: "prepare_step_1")
 
     ch_combined_kraken2 = ch_prepare_summary_kraken2
         .map { meta, path -> 
@@ -246,13 +244,12 @@ workflow DETAXIZER {
             }
         }
 
-    ch_combined_kraken2.dump(tag: "prepare_step_2")
-
-   
-
     // run of the process
-    ch_kraken2_summary = SUMMARY_KRAKEN2(ch_combined_kraken2)
-
+    ch_kraken2_summary = SUMMARY_KRAKEN2(
+        ch_combined_kraken2
+        ).map {
+            meta, path -> [path]
+        }
     //
     // MODULE: Extract the hits to fasta format
     //
@@ -371,11 +368,11 @@ workflow DETAXIZER {
     //ch_kraken2_summary = ch_kraken2_summary.map { meta, paths -> [paths] }
     ch_blastn_summary = ch_blastn_summary.map { meta, paths -> [paths]}
 
-    //ch_summary = ch_kraken2_summary.mix(ch_blastn_summary).collect()
+    ch_summary = ch_kraken2_summary.mix(ch_blastn_summary).collect()
 
-    //SUMMARIZER (
-    //    ch_summary
-    //)
+    SUMMARIZER (
+        ch_summary
+    )
 
     
 
