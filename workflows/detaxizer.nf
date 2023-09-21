@@ -229,16 +229,29 @@ workflow DETAXIZER {
         .map { meta, path -> 
         [ ['id': meta.id.replaceAll("(_R1|_R2|_R3)", "")], path ]
         }
-
-
-    ch_combined_kraken2 = ch_combined_kraken2
-                               .map { meta, paths -> [ meta, paths.flatten() ] }
-                               .groupTuple(by: [0], size: 5, remainder: true)
+        .groupTuple(by: [0])
+        .map { meta, path ->
+            path = path.flatten()
+            return [meta, path]
+            }
+        .map { meta, path ->
+            if(path.size() == 4) {
+                def newMeta = meta.clone()
+                newMeta.short_and_long_reads = true
+                return [newMeta, path]
+            } else {
+                def newMeta = meta.clone()
+                newMeta.short_and_long_reads = false
+                return [newMeta, path]
+            }
+        }
 
     ch_combined_kraken2.dump(tag: "prepare_step_2")
 
+   
+
     // run of the process
-    //ch_kraken2_summary = SUMMARY_KRAKEN2(ch_prepare_summary_kraken2)
+    ch_kraken2_summary = SUMMARY_KRAKEN2(ch_combined_kraken2)
 
     //
     // MODULE: Extract the hits to fasta format

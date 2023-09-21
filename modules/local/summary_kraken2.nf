@@ -4,7 +4,7 @@ process SUMMARY_KRAKEN2 {
         'https://depot.galaxyproject.org/singularity/pandas:1.5.2' :
         'biocontainers/pandas:1.5.2' }"
     input:
-        tuple val(meta),path(kraken2),path(isolatedkraken2)
+        tuple val(meta),path(kraken2)
         
 
     output:
@@ -17,28 +17,61 @@ process SUMMARY_KRAKEN2 {
 
     import pandas as pd
 
-    lines_in_kraken2 = 0
-    lines_in_isolatedkraken2 = 0
-    
-    with open("${kraken2}", 'r') as f:
-        for line in f:
-            if line != "\\n":
-                lines_in_kraken2 += 1
-    
-    with open("${isolatedkraken2}", 'r') as f:
-        for line in f:
-            if line != "\\n":
-                lines_in_isolatedkraken2 += 1
-    
-    data = {
-        "kraken2": [lines_in_kraken2],
-        "isolatedkraken2": [lines_in_isolatedkraken2]
+    def sort_list_of_files_by_pattern(kraken2_complete_list):
+        kraken2_dict = {
+            "kraken2": [],
+            "isolatedkraken2": []
         }
-    
-    df = pd.DataFrame(data)
+        for entry in kraken2_complete_list:
+            if 'classifiedreads.txt' in entry:
+                kraken2_dict["kraken2"].append(entry)
+            else:
+                kraken2_dict["isolatedkraken2"].append(entry)
+        
+        return kraken2_dict
 
-    df.index = ["${meta.id}"]
+    def calculate_lines_of_file(path):
+        lines = 0
+        with open(path,'r') as f:
+            for line in f:
+                if line == '\\n':
+                    pass
+                else:
+                    lines += 1
+        return lines
 
-    df.to_csv("${meta.id}.kraken2_summary.tsv",sep='\\t')
+    if "${meta.short_and_long_reads}" == "true":
+        list_files = "${kraken2}".split(" ")
+        kraken2_dict = sort_list_of_files_by_pattern(list_files)
+        kraken2_dict_lines = {
+            "kraken2": 0,
+            "isolatedkraken2": 0
+        }
+        for key in kraken2_dict.keys():
+            for entry in kraken2_dict[key]:
+                kraken2_dict_lines[key] += calculate_lines_of_file(entry)
+            kraken2_dict_lines[key] = [ kraken2_dict_lines[key] ]
+        df = pd.DataFrame(kraken2_dict_lines)
+
+        df.index = ["${meta.id}"]
+
+        df.to_csv("${meta.id}.kraken2_summary.tsv",sep='\\t')
+  
+    else:
+        list_files = "${kraken2}".split(" ")
+        kraken2_dict = sort_list_of_files_by_pattern(list_files)
+        kraken2_dict_lines = {
+            "kraken2": 0,
+            "isolatedkraken2": 0
+        }
+        for key in kraken2_dict.keys():
+            for entry in kraken2_dict[key]:
+                kraken2_dict_lines[key] += calculate_lines_of_file(entry)
+            kraken2_dict_lines[key] = [ kraken2_dict_lines[key] ]
+        df = pd.DataFrame(kraken2_dict_lines)
+
+        df.index = ["${meta.id}"]
+
+        df.to_csv("${meta.id}.kraken2_summary.tsv",sep='\\t')
     """
 }
