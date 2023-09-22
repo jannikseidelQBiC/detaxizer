@@ -128,8 +128,8 @@ result_tax_name_id = []
 for entry in result_to_filter:
     tax_name = entry
     tax_id = str(result[tax_name])
-    tax_name_id = tax_name + " (taxid " + tax_id + ")"
-    result_tax_name_id.append(tax_name_id)
+    #tax_name_id = tax_name + " (taxid " + tax_id + ")"
+    result_tax_name_id.append(tax_id)
     
 with open('taxa_to_filter.txt', "w") as f:
     for entry in result_tax_name_id:
